@@ -10,7 +10,6 @@ if(WIN32)
   endif()
 endif()
 
-
 # Declare library
 add_library(${PROJECT_NAME} STATIC src/points.hpp
 			    src/svd.hpp
