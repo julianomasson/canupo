@@ -408,34 +408,63 @@ struct PointCloud {
         nextptidx = lastpos;
     }
     
+	size_t load_txt(const M3C2::Cloud& cloudIn) 
+	{
+		using namespace std;
+		data.clear();
+		grid.clear();
+		// first pass to get the number of points and the bounds
+		xmin = numeric_limits<FloatType>::max();
+		xmax = -numeric_limits<FloatType>::max();
+		ymin = numeric_limits<FloatType>::max();
+		ymax = -numeric_limits<FloatType>::max();
+		data.reserve(cloudIn.points.size());
+		for (const auto& point : cloudIn.points)
+		{
+			PointType pointAux;
+			pointAux[0] = point.x;
+			pointAux[1] = point.y;
+			pointAux[2] = point.z;
+			data.emplace_back(pointAux);
+			xmin = min(xmin, point.x);
+			xmax = max(xmax, point.x);
+			ymin = min(ymin, point.y);
+			ymax = max(ymax, point.y);
+		}
+		prepare(xmin, xmax, ymin, ymax, data.size());
+		nextptidx = data.size();
+		const size_t numberOfpoints = data.size();
+		for (size_t i = 0; i < numberOfpoints; ++i) insert_data_at_index(i);
+		return numberOfpoints;
+	}
     size_t load_txt(const char* filename, std::vector<std::vector<FloatType> >* additionalInfo = 0, std::vector<size_t> *line_numbers = 0, int subsampling_factor = 0) {
         using namespace std;
         data.clear();
         grid.clear();
-        FILE* fp = fopen(filename, "r");
-        if (!fp) {std::cerr << "Could not load file: " << filename << std::endl; return 0;}
+		ifstream fp(filename);
+        if (!fp.is_open()) {std::cerr << "Could not load file: " << filename << std::endl; return 0;}
         // first pass to get the number of points and the bounds
         xmin = numeric_limits<FloatType>::max();
         xmax = -numeric_limits<FloatType>::max();
         ymin = numeric_limits<FloatType>::max();
         ymax = -numeric_limits<FloatType>::max();
-        char* line = 0;
-        size_t linelen = 0;
-        int num_read = 0;
+        std::string line;
         size_t linenum = 0;
         boost::mt19937* rng = 0;
         if (subsampling_factor) rng = new boost::mt19937;
-        while ((num_read = getline(&line, &linelen, fp)) != -1) {
+        while (getline(fp, line)) {
             ++linenum;
-            if (linelen==0 || line[0]=='#') continue;
+            if (line[0]=='#') continue;
             if (subsampling_factor && ((*rng)()%subsampling_factor>0)) continue;
             if (line_numbers) line_numbers->push_back(linenum);
             if (additionalInfo) additionalInfo->push_back(std::vector<FloatType>());
             PointType point;
             int i = 0;
             // atof & strtok are really too slow, not to mention alternatives...
-            for (char* x = line; *x!=0;) {
-                FloatType value = fast_atof_next_token(x);
+			unsigned int lineSize = line.size();
+			for (unsigned int j = 0; j < lineSize; j++)
+			{
+                FloatType value = std::atof(&(line[j]));
                 if (i<Point::dim) point[i] = value;
                 else if (additionalInfo) {
                     additionalInfo->back().push_back(value);
@@ -448,7 +477,7 @@ struct PointCloud {
             ymin = min(ymin, point[1]);
             ymax = max(ymax, point[1]);
         }
-        fclose(fp);
+		fp.close();
         prepare(xmin, xmax, ymin, ymax, data.size());
         nextptidx = data.size();
         for (size_t i = 0; i<data.size(); ++i) insert_data_at_index(i);

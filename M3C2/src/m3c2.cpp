@@ -21,6 +21,7 @@
 //* MA  02110-1301  USA                                                *
 //*                                                                    *
 //**********************************************************************/
+#include "m3c2.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -47,7 +48,6 @@
 #include "svd.hpp"
 
 #include <string.h>
-#include <stdlib.h>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -253,79 +253,33 @@ inline double nan_is_0(double x) {
     return isfinite(x)?x:0;
 }
 
-int main(int argc, char** argv) {
-
-    if (argc<8) return help();
-
-    int separator = 0;
-    for (int i=1; i<argc; ++i) if (!strcmp(":",argv[i])) {
-        separator = i;
-        break;
-    }
-    if (separator==0) return help();
-
+bool M3C2::M3C2::compute(const Cloud & p1In, const Cloud & p1ReducedIn, const Cloud & p2In, const Cloud & p2ReducedIn,
+	const Cloud & coresIn, const Cloud & extptsIn, const Options & options)
+{
     // get all unique scales from large to small, for later processing of neighborhoods
     typedef set<double, greater<double> > ScaleSet;
     ScaleSet scales;
-    for (int i=1; i<separator; ++i) {
-        // perhaps it has the minscale:increment:maxscale syntax
-        char* col1 = strchr(argv[i],':');
-        char* col2 = strrchr(argv[i],':');
-        if (col1==0 || col2==0 || col1==col2) {
-            double scale = atof(argv[i]);
-            if (scale<=0) return help("Invalid scale");
-            scales.insert(scale);
-        } else {
-            *col1++=0;
-            double minscale = atof(argv[i]);
-            *col2++=0;
-            double increment = atof(col1);
-            double maxscale = atof(col2);
-            if (minscale<=0 || maxscale<=0) return help("Invalid scale range");
-            bool validRange = false;
-            if ((minscale - maxscale) * increment > 0) return help("Invalid range specification");
-            if (minscale<=maxscale) for (double scale = minscale; scale < maxscale*(1-1e-6); scale += increment) {
-                validRange = true;
-                scales.insert(scale);
-            } else for (double scale = minscale; scale > maxscale*(1+1e-6); scale += increment) {
-                validRange = true;
-                scales.insert(scale);
-            }
-            // compensate roundoff errors for loop bounds
-            scales.insert(minscale); scales.insert(maxscale);
-            if (!validRange) return help("Invalid range specification");
-        }
-    }
+	for (const auto& scale : options.scales)
+	{
+		scales.insert(scale);
+	}
 
     vector<double> scalesvec(scales.begin(), scales.end());
     int nscales = scalesvec.size();
     
     if (scales.empty()) return help();
     
-    double cylinder_base = scalesvec.back(); // smallest
-    double cylinder_length = scalesvec[0];   // largest
-    
-    int separator_next = 0;
-    for (int i=separator+1; i<argc; ++i) if (!strcmp(":",argv[i])) {
-        separator_next = i;
-        break;
-    }
-    if (separator_next!=0) {
-        if (separator_next != separator+2) return help();
-        cylinder_base = atof(argv[separator+1]);
-        separator = separator_next;
-        separator_next = 0;
-        for (int i=separator+1; i<argc; ++i) if (!strcmp(":",argv[i])) {
-            separator_next = i;
-            break;
-        }
-        if (separator_next!=0) {
-            if (separator_next != separator+2) return help();
-            cylinder_length = atof(argv[separator+1]);
-            separator = separator_next;
-        }
-    }
-    
+	double cylinder_base = scalesvec.back(); // smallest
+	double cylinder_length = scalesvec[0];   // largest
+	if (options.cylinder_base != -1)
+	{
+		cylinder_base = options.cylinder_base;
+	}
+	if (options.cylinder_length != -1)
+	{
+		cylinder_length = options.cylinder_length;
+	}
+
     // cylinder is split in segments using small balls, covering up the whole length
     // Analysis of the volume of the balls outside the cylinder wrt the number of balls
     // and their diameters required for covering the cylinder shows a minimum
@@ -334,8 +288,6 @@ int main(int argc, char** argv) {
     double cyl_section_length = 2.*cylinder_length/num_cyl_balls; 
     double cyl_ball_radius = 0.5*sqrt(cyl_section_length*cyl_section_length + cylinder_base*cylinder_base);
     double cylinder_base_radius_sq = cylinder_base * cylinder_base * 0.25;
-    
-    if (argc<separator+6) return help();
 
     cout << "Scale" << (scales.size()==1?"":"s") << " for normals computation:";
     for (ScaleSet::iterator it = scales.begin(); it!=scales.end(); ++it) {
@@ -344,70 +296,67 @@ int main(int argc, char** argv) {
     cout << endl;
     cout << "Base of projection/search cylinder: " << cylinder_base << endl;
     cout << "Length of projection/search cylinder: " << cylinder_length << endl;
-    
-    string p1fname = argv[separator+1];
-    string p1reducedfname;
-    int p1redpos = p1fname.find(':');
-    if (p1redpos>=0) {
-        p1reducedfname = p1fname.substr(p1redpos+1);
-        p1fname = p1fname.substr(0,p1redpos);
-    }
-    string p2fname = argv[separator+2];
-    string p2reducedfname;
-    int p2redpos = p2fname.find(':');
-    if (p2redpos>=0) {
-        p2reducedfname = p2fname.substr(p2redpos+1);
-        p2fname = p2fname.substr(0,p2redpos);
-    }
-    
-    string corefname = argv[separator+3];
-    string extptsfname = argv[separator+4];
-    string resultarg = argv[separator+5];
+     
+    string resultarg = options.result_filename;
     
     vector<string> result_filenames;
+	result_filenames.emplace_back(options.result_filename);
     vector<vector<string> > result_formats;
+	vector<string> formats;
+	for (int i = 0; i < num_default_result_formats; ++i)
+	{
+		formats.push_back(default_result_formats[i]);
+	}
+
+	bool compute_normal_angles = false, compute_shift_bsdev = false;
+	double n1angle_bs = 0, n2angle_bs = 0;
+	// set to true below by default
+	// disabled below if another option is set
+	bool fast_ci = true;
+	bool compute_normal_plane_dev = false;
+
+	for (auto format : formats)
+	{
+		if (format == "ksi1" || format == "ksi2" || format == "normal_dev1" || format == "normal_dev2") compute_normal_plane_dev = true;
+		if (format == "n1angle_bs" || format == "n2angle_bs") compute_normal_angles = true;
+		if (format == "shift1_bsdev" || format == "shift2_bsdev") compute_shift_bsdev = true;
+	}
+	result_formats.emplace_back(formats);
     
-    bool compute_normal_angles = false, compute_shift_bsdev = false;
-    double n1angle_bs = 0, n2angle_bs = 0;
-    // set to true below by default
-    // disabled below if another option is set
-    bool fast_ci = true;
-    bool compute_normal_plane_dev = false;
-    
-    char_separator<char> colsep(":");
-    char_separator<char> commasep(",");
-    typedef boost::tokenizer<boost::char_separator<char> > tokenizer;
-    tokenizer resfile_tokenizer(resultarg, colsep);
-    for (tokenizer::iterator ftokit = resfile_tokenizer.begin(); ftokit != resfile_tokenizer.end(); ++ftokit) {
-        // get each file specification
-        tokenizer spec_tokenizer(*ftokit, commasep);
-        tokenizer::iterator stokit = spec_tokenizer.begin();
-        if (stokit == spec_tokenizer.end()) return help("Invalid result file format");
-        // first token is the file name
-        result_filenames.push_back(*stokit);
-        vector<string> formats;
-        // next are the format specifications
-        for(++stokit; stokit!=spec_tokenizer.end(); ++stokit) {
-            string format = *stokit;
-            bool found = false;
-            for (int i=0; i<nresformats; ++i) if (format==all_result_formats[i]) {
-                found = true;
-                break;
-            }
-            if (!found) return help(("Invalid result file format: "+format).c_str());
-            formats.push_back(format);
-        }
-        if (formats.empty()) {
-            for (int i=0; i<num_default_result_formats; ++i) formats.push_back(default_result_formats[i]);
-        }
-        for (auto format : formats) {
-            if (format=="ksi1" || format=="ksi2" || format=="normal_dev1" || format=="normal_dev2") compute_normal_plane_dev = true;
-            if (format=="n1angle_bs" || format=="n2angle_bs") compute_normal_angles = true;
-            if (format=="shift1_bsdev" || format=="shift2_bsdev") compute_shift_bsdev = true;
-        }
-        result_formats.push_back(formats);
-    }
-    
+    //char_separator<char> colsep(":");
+    //char_separator<char> commasep(",");
+    //typedef boost::tokenizer<boost::char_separator<char> > tokenizer;
+    //tokenizer resfile_tokenizer(resultarg, colsep);
+    //for (tokenizer::iterator ftokit = resfile_tokenizer.begin(); ftokit != resfile_tokenizer.end(); ++ftokit) {
+    //    // get each file specification
+    //    tokenizer spec_tokenizer(*ftokit, commasep);
+    //    tokenizer::iterator stokit = spec_tokenizer.begin();
+    //    if (stokit == spec_tokenizer.end()) return help("Invalid result file format");
+    //    // first token is the file name
+    //    result_filenames.push_back(*stokit);
+    //    vector<string> formats;
+    //    // next are the format specifications
+    //    for(++stokit; stokit!=spec_tokenizer.end(); ++stokit) {
+    //        string format = *stokit;
+    //        bool found = false;
+    //        for (int i=0; i<nresformats; ++i) if (format==all_result_formats[i]) {
+    //            found = true;
+    //            break;
+    //        }
+    //        if (!found) return help(("Invalid result file format: "+format).c_str());
+    //        formats.push_back(format);
+    //    }
+    //    if (formats.empty()) {
+    //        for (int i=0; i<num_default_result_formats; ++i) formats.push_back(default_result_formats[i]);
+    //    }
+    //    for (auto format : formats) {
+    //        if (format=="ksi1" || format=="ksi2" || format=="normal_dev1" || format=="normal_dev2") compute_normal_plane_dev = true;
+    //        if (format=="n1angle_bs" || format=="n2angle_bs") compute_normal_angles = true;
+    //        if (format=="shift1_bsdev" || format=="shift2_bsdev") compute_shift_bsdev = true;
+    //    }
+    //    result_formats.push_back(formats);
+    //}
+    //
     bool force_horizontal = false;
     bool force_vertical = false;
     bool use_median = false;
@@ -426,49 +375,51 @@ int main(int argc, char** argv) {
     
     int np_prod_max = 10000;
     
-    if (argc>separator+6) {
-        int extra_info_idx = separator+6;
-        for (char* opt=argv[separator+6]; *opt!=0; ++opt) {
-            switch(*opt) {
-                case '1': shift_first = true; break;
-                case '2': shift_second = true; break;
-                case 'm': shift_mean = true; break;
-                case 'q': use_median = true; break;
-                case 'h': force_horizontal = true; break;
-                case 'v': force_vertical = true; break;
-                case 'w': warnings = true; break;
-                case 'e': if (++extra_info_idx<argc) {
-                    pos_dev = atof(argv[extra_info_idx]); break;
-                } else return help("Missing value for the e flag");
-                case 'b': if (++extra_info_idx<argc) {
-                    use_BCa = true;
-                    num_bootstrap_iter = atoi(argv[extra_info_idx]); break;
-                } else return help("Missing value for the b flag");
-                case 'n': if (++extra_info_idx<argc) {
-                    num_normal_bootstrap_iter = atoi(argv[extra_info_idx]); break;
-                } else return help("Missing value for the n flag");
-                case 'c': if (++extra_info_idx<argc) {
-                    confidence_interval_percent = atof(argv[extra_info_idx]); break;
-                } else return help("Missing value for the c flag");
-                case 'k': if (++extra_info_idx<argc) {
-                    ksi_autoscale = atof(argv[extra_info_idx]); break;
-                } else return help("Missing value for the c flag");
-                case 'f': fast_ci = true; break;
-                case 'g': normal_ci = true; break;
-                case 'p': if (++extra_info_idx<argc) {
-                    num_pt_sig = atoi(argv[extra_info_idx]); break;
-                } else return help("Missing value for the p flag");
-/*                case 's': if (extra_info_idx+3<argc) {
-                    systematic_error.x = atof(argv[++extra_info_idx]);
-                    systematic_error.y = atof(argv[++extra_info_idx]);
-                    systematic_error.z = atof(argv[++extra_info_idx]);
-                    break;
-                } else return help("Missing value for the s flag"); break;
-*/
-                default: return help((string("Unrecognised optional flag: ")+opt).c_str());
-            }
-        }
-    }
+	//disable exrta options for now
+//    if (argc>separator+6) 
+//	{
+//        int extra_info_idx = separator+6;
+//        for (char* opt=argv[separator+6]; *opt!=0; ++opt) {
+//            switch(*opt) {
+//                case '1': shift_first = true; break;
+//                case '2': shift_second = true; break;
+//                case 'm': shift_mean = true; break;
+//                case 'q': use_median = true; break;
+//                case 'h': force_horizontal = true; break;
+//                case 'v': force_vertical = true; break;
+//                case 'w': warnings = true; break;
+//                case 'e': if (++extra_info_idx<argc) {
+//                    pos_dev = atof(argv[extra_info_idx]); break;
+//                } else return help("Missing value for the e flag");
+//                case 'b': if (++extra_info_idx<argc) {
+//                    use_BCa = true;
+//                    num_bootstrap_iter = atoi(argv[extra_info_idx]); break;
+//                } else return help("Missing value for the b flag");
+//                case 'n': if (++extra_info_idx<argc) {
+//                    num_normal_bootstrap_iter = atoi(argv[extra_info_idx]); break;
+//                } else return help("Missing value for the n flag");
+//                case 'c': if (++extra_info_idx<argc) {
+//                    confidence_interval_percent = atof(argv[extra_info_idx]); break;
+//                } else return help("Missing value for the c flag");
+//                case 'k': if (++extra_info_idx<argc) {
+//                    ksi_autoscale = atof(argv[extra_info_idx]); break;
+//                } else return help("Missing value for the c flag");
+//                case 'f': fast_ci = true; break;
+//                case 'g': normal_ci = true; break;
+//                case 'p': if (++extra_info_idx<argc) {
+//                    num_pt_sig = atoi(argv[extra_info_idx]); break;
+//                } else return help("Missing value for the p flag");
+///*                case 's': if (extra_info_idx+3<argc) {
+//                    systematic_error.x = atof(argv[++extra_info_idx]);
+//                    systematic_error.y = atof(argv[++extra_info_idx]);
+//                    systematic_error.z = atof(argv[++extra_info_idx]);
+//                    break;
+//                } else return help("Missing value for the s flag"); break;
+//*/
+//                default: return help((string("Unrecognised optional flag: ")+opt).c_str());
+//            }
+//        }
+//    }
     
     if (shift_first && shift_second) return help("Conflicting 1 and 2 options for shifting core points.");
     if (shift_first && shift_mean) return help("Conflicting 1 and m options for shifting core points.");
@@ -518,80 +469,53 @@ int main(int argc, char** argv) {
 
     randinit();
     
-    cout << "Loading cloud 1: " << p1fname << endl;
+    cout << "Loading cloud 1\n";
     
     PointCloud<Point> p1, p1reduced;
-    p1.load_txt(p1fname);
-    if (!p1reducedfname.empty()) {
-        cout << "Loading subsampled cloud 1: " << p1reducedfname << endl;
-        if (p1reduced.load_txt(p1reducedfname)==0) {
-            cout << "Bad or empty subsampled cloud 1: " << p1reducedfname << endl;
-            return -1;
-        }
+    p1.load_txt(p1In);
+    if (p1ReducedIn.points.size() != 0) 
+	{
+        cout << "Loading subsampled cloud 1\n";
+		p1reduced.load_txt(p1ReducedIn);
     }
     
-    cout << "Loading cloud 2: " << p2fname << endl;
+    cout << "Loading cloud 2\n";
     
     PointCloud<Point> p2, p2reduced;
-    p2.load_txt(p2fname);
-    if (!p2reducedfname.empty()) {
-        cout << "Loading subsampled cloud 2: " << p2reducedfname << endl;
-        if (p2reduced.load_txt(p2reducedfname)==0) {
-            cout << "Bad or empty subsampled cloud 2: " << p2reducedfname << endl;
-            return -1;
-        }
-    }
+    p2.load_txt(p2In);
+	if (p2ReducedIn.points.size() != 0)
+	{
+		cout << "Loading subsampled cloud 2\n";
+		p2reduced.load_txt(p2ReducedIn);
+	}
         
-    cout << "Loading core points: " << corefname << endl;
+    cout << "Loading core points\n";
     
-    FILE* corepointsfile = fopen(corefname.c_str(), "r");
-    if (!corepointsfile) {cerr << "Could not load file: " << corefname << endl; return 1;}
-    char* line = 0; size_t linelen = 0; int num_read = 0;
-    int linenum = 0;
-    vector<Point> corepoints;
-    while ((num_read = getline(&line, &linelen, corepointsfile)) != -1) {
-        ++linenum;
-        if (linelen==0 || line[0]=='#') continue;
-        Point point;
-        int i = 0;
-        for (char* x = line; *x!=0;) {
-            double value = fast_atof_next_token(x);
-            if (i<Point::dim) point[i++] = value;
-            else break;
-        }
-        if (i<3) {cerr << "Error in the core points file" << corefname << " line " << (linenum+1) << endl; continue;}
-        corepoints.push_back(point);
-    }
-    fclose(corepointsfile);
+	vector<Point> corepoints;
+	corepoints.reserve(coresIn.points.size());
+	for (const auto& point : coresIn.points)
+	{
+		Point pointAux(point.x, point.y, point.z);
+		corepoints.emplace_back(pointAux);
+	}
 
-    cout << "Loading external reference points: " << extptsfname << endl;
+    cout << "Loading external reference points\n";
     
-    FILE* refpointsfile = fopen(extptsfname.c_str(), "r");
-    if (!refpointsfile) {std::cerr << "Could not load file: " << extptsfname << std::endl; return 1;}
-    linenum = 0;
-    vector<Point> refpoints;
-    while ((num_read = getline(&line, &linelen, refpointsfile)) != -1) {
-        ++linenum;
-        if (linelen==0 || line[0]=='#') continue;
-        Point point;
-        int i = 0;
-        for (char* x = line; *x!=0;) {
-            double value = fast_atof_next_token(x);
-            if (i<Point::dim) point[i++] = value;
-            else break;
-        }
-        if (i<3) return help(str(boost::format("Error in the reference points file line %d") % (linenum+1)).c_str());
-        refpoints.push_back(point);
-    }
-    fclose(refpointsfile);
+	vector<Point> refpoints;
+	refpoints.reserve(extptsIn.points.size());
+	for (const auto& point : extptsIn.points)
+	{
+		Point pointAux(point.x, point.y, point.z);
+		refpoints.emplace_back(pointAux);
+	}
     
     if (refpoints.empty()) return help("Please provide at least one reference point");
     
-    for (int i = separator+6; i<argc; ++i) {
-        if (i==separator+6) cout << "Options given:";
-        cout << " " << argv[i];
-        if (i==argc-1) cout << endl;
-    }
+    //for (int i = separator+6; i<argc; ++i) {
+    //    if (i==separator+6) cout << "Options given:";
+    //    cout << " " << argv[i];
+    //    if (i==argc-1) cout << endl;
+    //}
     
     cout << "Computing result files: " << endl;
     for (int i=0; i<(int)result_filenames.size(); ++i) {
@@ -668,8 +592,9 @@ int main(int argc, char** argv) {
             if (scaleidx==0) {
                 // we have all neighbors, unsorted, but with distances computed already
                 // use scales = diameters, not radius
-                if (!shift_second) {
-                    if (p1reducedfname.empty())
+                if (!shift_second) 
+				{
+                    if (p1ReducedIn.points.size() == 0)
                         p1.findNeighbors(back_inserter(neighbors_1), corepoints[ptidx], scalesvec[scaleidx] * 0.5);
                     else 
                         p1reduced.findNeighbors(back_inserter(neighbors_1), corepoints[ptidx], scalesvec[scaleidx] * 0.5);
@@ -683,7 +608,7 @@ int main(int argc, char** argv) {
                     for (int i=1; i<(int)neighbors_1.size(); ++i) neighsums_1[i] = neighsums_1[i-1] + *neighbors_1[i].pt;
                 }
                 if (!shift_first) {
-                    if (p2reducedfname.empty())
+                    if (p2ReducedIn.points.size() == 0)
                         p2.findNeighbors(back_inserter(neighbors_2), corepoints[ptidx], scalesvec[scaleidx] * 0.5);
                     else
                         p2reduced.findNeighbors(back_inserter(neighbors_2), corepoints[ptidx], scalesvec[scaleidx] * 0.5);
