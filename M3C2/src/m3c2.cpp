@@ -289,13 +289,13 @@ bool M3C2::M3C2::compute(const Cloud & p1In, const Cloud & p1ReducedIn, const Cl
     double cyl_ball_radius = 0.5*sqrt(cyl_section_length*cyl_section_length + cylinder_base*cylinder_base);
     double cylinder_base_radius_sq = cylinder_base * cylinder_base * 0.25;
 
-    cout << "Scale" << (scales.size()==1?"":"s") << " for normals computation:";
-    for (ScaleSet::iterator it = scales.begin(); it!=scales.end(); ++it) {
-        cout << " " << *it;
-    }
-    cout << endl;
-    cout << "Base of projection/search cylinder: " << cylinder_base << endl;
-    cout << "Length of projection/search cylinder: " << cylinder_length << endl;
+    //cout << "Scale" << (scales.size()==1?"":"s") << " for normals computation:";
+    //for (ScaleSet::iterator it = scales.begin(); it!=scales.end(); ++it) {
+    //    cout << " " << *it;
+    //}
+    //cout << endl;
+    //cout << "Base of projection/search cylinder: " << cylinder_base << endl;
+    //cout << "Length of projection/search cylinder: " << cylinder_length << endl;
      
     string resultarg = options.result_filename;
     
@@ -469,27 +469,27 @@ bool M3C2::M3C2::compute(const Cloud & p1In, const Cloud & p1ReducedIn, const Cl
 
     randinit();
     
-    cout << "Loading cloud 1\n";
+    //cout << "Loading cloud 1\n";
     
     PointCloud<Point> p1, p1reduced;
     p1.load_txt(p1In);
     if (p1ReducedIn.points.size() != 0) 
 	{
-        cout << "Loading subsampled cloud 1\n";
+        //cout << "Loading subsampled cloud 1\n";
 		p1reduced.load_txt(p1ReducedIn);
     }
     
-    cout << "Loading cloud 2\n";
+    //cout << "Loading cloud 2\n";
     
     PointCloud<Point> p2, p2reduced;
     p2.load_txt(p2In);
 	if (p2ReducedIn.points.size() != 0)
 	{
-		cout << "Loading subsampled cloud 2\n";
+		//cout << "Loading subsampled cloud 2\n";
 		p2reduced.load_txt(p2ReducedIn);
 	}
         
-    cout << "Loading core points\n";
+    //cout << "Loading core points\n";
     
 	vector<Point> corepoints;
 	corepoints.reserve(coresIn.points.size());
@@ -499,7 +499,7 @@ bool M3C2::M3C2::compute(const Cloud & p1In, const Cloud & p1ReducedIn, const Cl
 		corepoints.emplace_back(pointAux);
 	}
 
-    cout << "Loading external reference points\n";
+    //cout << "Loading external reference points\n";
     
 	vector<Point> refpoints;
 	refpoints.reserve(extptsIn.points.size());
@@ -517,13 +517,13 @@ bool M3C2::M3C2::compute(const Cloud & p1In, const Cloud & p1ReducedIn, const Cl
     //    if (i==argc-1) cout << endl;
     //}
     
-    cout << "Computing result files: " << endl;
-    for (int i=0; i<(int)result_filenames.size(); ++i) {
-        cout << "  " << result_filenames[i] << ":";
-        vector<string>& formats = result_formats[i];
-        for (int j=0; j<(int)formats.size(); ++j) cout << " " << formats[j];
-        cout << endl;
-    }
+    //cout << "Computing result files: " << endl;
+    //for (int i=0; i<(int)result_filenames.size(); ++i) {
+    //    cout << "  " << result_filenames[i] << ":";
+    //    vector<string>& formats = result_formats[i];
+    //    for (int j=0; j<(int)formats.size(); ++j) cout << " " << formats[j];
+    //    cout << endl;
+    //}
 
     
     map<string, string> formats_disp_map;
@@ -553,7 +553,7 @@ bool M3C2::M3C2::compute(const Cloud & p1In, const Cloud & p1ReducedIn, const Cl
     
     // parameters and files loaded, now the real work
     
-    cout << "Percent complete: 0" << flush;
+    //cout << "Percent complete: 0" << flush;
     
     double core_global_diff_mean = 0;
     double core_global_diff_min = numeric_limits<double>::max();
@@ -569,17 +569,17 @@ bool M3C2::M3C2::compute(const Cloud & p1In, const Cloud & p1ReducedIn, const Cl
 	result.diff.reserve(number_core_points);
 
     // for each core point
-    int nextpercentcomplete = 5;
+    //int nextpercentcomplete = 5;
     for (int ptidx = 0; ptidx < (int)corepoints.size(); ++ptidx) 
 	{
-        int percentcomplete = ((ptidx+1) * 100) / corepoints.size();
-        if (percentcomplete>=nextpercentcomplete) {
-            if (percentcomplete>=nextpercentcomplete) {
-                nextpercentcomplete+=5;
-                if (percentcomplete % 10 == 0) cout << percentcomplete << flush;
-                else if (percentcomplete % 5 == 0) cout << "." << flush;
-            }
-        }
+        //int percentcomplete = ((ptidx+1) * 100) / corepoints.size();
+        //if (percentcomplete>=nextpercentcomplete) {
+        //    if (percentcomplete>=nextpercentcomplete) {
+        //        nextpercentcomplete+=5;
+        //        if (percentcomplete % 10 == 0) cout << percentcomplete << flush;
+        //        else if (percentcomplete % 5 == 0) cout << "." << flush;
+        //    }
+        //}
 
         // first extract the neighbors on which to do the normal computations
         // these are fixed for the whole bootstrapping. Technically we should apply
@@ -1441,12 +1441,12 @@ bool M3C2::M3C2::compute(const Cloud & p1In, const Cloud & p1ReducedIn, const Cl
         core_global_diff_min = min((double)core_global_diff_min, (double)diff);
         core_global_diff_max = max((double)core_global_diff_min, (double)diff);
     }
-    cout << endl;
-    
-    cout << num_nan_c1 << " / " << corepoints.size() << " core points could not be projected on the first cloud" << endl;
-    cout << num_nan_c2 << " / " << corepoints.size() << " core points could not be projected on the second cloud" << endl;
-    core_global_diff_mean /= corepoints.size() - num_nan_diff;
-    cout << "Global diff min / mean / max on all core points: " << core_global_diff_min << " / " << core_global_diff_mean << " / " << core_global_diff_max << endl;
+    //cout << endl;
+    //
+    //cout << num_nan_c1 << " / " << corepoints.size() << " core points could not be projected on the first cloud" << endl;
+    //cout << num_nan_c2 << " / " << corepoints.size() << " core points could not be projected on the second cloud" << endl;
+    //core_global_diff_mean /= corepoints.size() - num_nan_diff;
+    //cout << "Global diff min / mean / max on all core points: " << core_global_diff_min << " / " << core_global_diff_mean << " / " << core_global_diff_max << endl;
 
     //for (int i=0; i<(int)resultfiles.size(); ++i) resultfiles[i]->close();
         
