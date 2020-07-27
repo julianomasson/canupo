@@ -24,6 +24,9 @@ namespace M3C2
 	struct Cloud
 	{
 		std::vector<PointXYZ> points;
+		//Used for the output
+		std::vector<PointXYZ> normals;
+		std::vector<double> diff;
 	};
 
 	class M3C2
@@ -32,6 +35,6 @@ namespace M3C2
 		M3C2(void) {};
 		bool compute(const Cloud& p1, const Cloud& p1Reduced,
 			const Cloud& p2, const Cloud& p2Reduced,
-			const Cloud& cores, const Cloud& extpts, const Options& options);
+			const Cloud& cores, const Cloud& extpts, Cloud& result, const Options& options);
 	};
 }

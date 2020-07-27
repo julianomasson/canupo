@@ -254,7 +254,7 @@ inline double nan_is_0(double x) {
 }
 
 bool M3C2::M3C2::compute(const Cloud & p1In, const Cloud & p1ReducedIn, const Cloud & p2In, const Cloud & p2ReducedIn,
-	const Cloud & coresIn, const Cloud & extptsIn, const Options & options)
+	const Cloud & coresIn, const Cloud & extptsIn, Cloud& result, const Options & options)
 {
     // get all unique scales from large to small, for later processing of neighborhoods
     typedef set<double, greater<double> > ScaleSet;
@@ -562,9 +562,16 @@ bool M3C2::M3C2::compute(const Cloud & p1In, const Cloud & p1ReducedIn, const Cl
     int num_nan_c1 = 0;
     int num_nan_c2 = 0;
     
+	//Build the result
+	auto number_core_points = corepoints.size();
+	result.points.reserve(number_core_points);
+	result.normals.reserve(number_core_points);
+	result.diff.reserve(number_core_points);
+
     // for each core point
     int nextpercentcomplete = 5;
-    for (int ptidx = 0; ptidx < (int)corepoints.size(); ++ptidx) {
+    for (int ptidx = 0; ptidx < (int)corepoints.size(); ++ptidx) 
+	{
         int percentcomplete = ((ptidx+1) * 100) / corepoints.size();
         if (percentcomplete>=nextpercentcomplete) {
             if (percentcomplete>=nextpercentcomplete) {
@@ -1381,45 +1388,53 @@ bool M3C2::M3C2::compute(const Cloud & p1In, const Cloud & p1ReducedIn, const Cl
         if (!isfinite(c1shift)) ++num_nan_c1;
         if (!isfinite(c2shift)) ++num_nan_c2;
 
-        for (int i=0; i<(int)resultfiles.size(); ++i) {
-            ofstream& resultfile = *resultfiles[i];
-            vector<string>& formats = result_formats[i];
-            for (int j=0; j<(int)formats.size(); ++j) {
-                if (j>0) resultfile << " ";
-                if (formats[j] == "c1") resultfile << nan_is_0(core1.x) << " " << nan_is_0(core1.y) << " " << nan_is_0(core1.z);
-                else if (formats[j] == "c2") resultfile << nan_is_0(core2.x) << " " << nan_is_0(core2.y) << " " << nan_is_0(core2.z);
-                else if (formats[j] == "c0") resultfile << nan_is_0(corepoints[ptidx].x) << " " << nan_is_0(corepoints[ptidx].y) << " " << nan_is_0(corepoints[ptidx].z);
-                else if (formats[j] == "n1") resultfile << nan_is_0(normal_1.x) << " " << nan_is_0(normal_1.y) << " " << nan_is_0(normal_1.z);
-                else if (formats[j] == "n2") resultfile << nan_is_0(normal_2.x) << " " << nan_is_0(normal_2.y) << " " << nan_is_0(normal_2.z);
-                else if (formats[j] == "sn1") resultfile << nan_is_0(scalesvec[normal_scale_idx_1]);
-                else if (formats[j] == "sn2") resultfile << nan_is_0(scalesvec[normal_scale_idx_2]);
-                else if (formats[j] == "ns1") resultfile << nan_is_0(neigh_num_1[normal_scale_idx_1]);
-                else if (formats[j] == "ns2") resultfile << nan_is_0(neigh_num_2[normal_scale_idx_2]);
-                else if (formats[j] == "np1") resultfile << nan_is_0(np1);
-                else if (formats[j] == "np2") resultfile << nan_is_0(np2);
-                else if (formats[j] == "shift1") resultfile << nan_is_0(c1shift);
-                else if (formats[j] == "shift2") resultfile << nan_is_0(c2shift);
-                else if (formats[j] == "dev1") resultfile << nan_is_0(c1dev);
-                else if (formats[j] == "dev2") resultfile << nan_is_0(c2dev);
-                else if (formats[j] == "diff") resultfile << nan_is_0(diff);
-                else if (formats[j] == "diff_bsdev") resultfile << nan_is_0(diff_bsdev);
-                else if (formats[j] == "shift1_bsdev") resultfile << nan_is_0(c1shift_bsdev);
-                else if (formats[j] == "shift2_bsdev") resultfile << nan_is_0(c2shift_bsdev);
-                else if (formats[j] == "normal_dev1") resultfile << nan_is_0(normal_dev1);
-                else if (formats[j] == "normal_dev2") resultfile << nan_is_0(normal_dev2);
-                else if (formats[j] == "ksi1") resultfile << nan_is_0((scalesvec[normal_scale_idx_1] / normal_dev1));
-                else if (formats[j] == "ksi2") resultfile << nan_is_0((scalesvec[normal_scale_idx_2] / normal_dev2));
-                else if (formats[j] == "n1angle_bs") resultfile << nan_is_0(n1angle_bs);
-                else if (formats[j] == "n2angle_bs") resultfile << nan_is_0(n2angle_bs);
-                else if (formats[j] == "diff_ci_low") resultfile << nan_is_0(ci_low);
-                else if (formats[j] == "diff_ci_high") resultfile << nan_is_0(ci_high);
-                else if (formats[j] == "diff_sig") resultfile << nan_is_0(diff_sig);
-                else {
-                    if (ptidx==0) cout << "Invalid result format \"" << formats[j] << "\" is ignored." << endl;
-                }
-            }        
-            resultfile << endl;
-        }
+		//Build result
+		result.points.emplace_back(nan_is_0(core1.x), nan_is_0(core1.y), nan_is_0(core1.z));
+		result.normals.emplace_back(nan_is_0(normal_1.x), nan_is_0(normal_1.y), nan_is_0(normal_1.z));
+		result.diff.emplace_back(nan_is_0(diff));
+
+  //      for (int i=0; i<(int)resultfiles.size(); ++i) 
+		//{
+  //          ofstream& resultfile = *resultfiles[i];
+  //          vector<string>& formats = result_formats[i];
+  //          for (int j=0; j<(int)formats.size(); ++j) 
+		//	{
+  //              if (j>0) resultfile << " ";
+  //              if (formats[j] == "c1") resultfile << nan_is_0(core1.x) << " " << nan_is_0(core1.y) << " " << nan_is_0(core1.z);
+  //              else if (formats[j] == "c2") resultfile << nan_is_0(core2.x) << " " << nan_is_0(core2.y) << " " << nan_is_0(core2.z);
+  //              else if (formats[j] == "c0") resultfile << nan_is_0(corepoints[ptidx].x) << " " << nan_is_0(corepoints[ptidx].y) << " " << nan_is_0(corepoints[ptidx].z);
+  //              else if (formats[j] == "n1") resultfile << nan_is_0(normal_1.x) << " " << nan_is_0(normal_1.y) << " " << nan_is_0(normal_1.z);
+  //              else if (formats[j] == "n2") resultfile << nan_is_0(normal_2.x) << " " << nan_is_0(normal_2.y) << " " << nan_is_0(normal_2.z);
+  //              else if (formats[j] == "sn1") resultfile << nan_is_0(scalesvec[normal_scale_idx_1]);
+  //              else if (formats[j] == "sn2") resultfile << nan_is_0(scalesvec[normal_scale_idx_2]);
+  //              else if (formats[j] == "ns1") resultfile << nan_is_0(neigh_num_1[normal_scale_idx_1]);
+  //              else if (formats[j] == "ns2") resultfile << nan_is_0(neigh_num_2[normal_scale_idx_2]);
+  //              else if (formats[j] == "np1") resultfile << nan_is_0(np1);
+  //              else if (formats[j] == "np2") resultfile << nan_is_0(np2);
+  //              else if (formats[j] == "shift1") resultfile << nan_is_0(c1shift);
+  //              else if (formats[j] == "shift2") resultfile << nan_is_0(c2shift);
+  //              else if (formats[j] == "dev1") resultfile << nan_is_0(c1dev);
+  //              else if (formats[j] == "dev2") resultfile << nan_is_0(c2dev);
+  //              else if (formats[j] == "diff") resultfile << nan_is_0(diff);
+  //              else if (formats[j] == "diff_bsdev") resultfile << nan_is_0(diff_bsdev);
+  //              else if (formats[j] == "shift1_bsdev") resultfile << nan_is_0(c1shift_bsdev);
+  //              else if (formats[j] == "shift2_bsdev") resultfile << nan_is_0(c2shift_bsdev);
+  //              else if (formats[j] == "normal_dev1") resultfile << nan_is_0(normal_dev1);
+  //              else if (formats[j] == "normal_dev2") resultfile << nan_is_0(normal_dev2);
+  //              else if (formats[j] == "ksi1") resultfile << nan_is_0((scalesvec[normal_scale_idx_1] / normal_dev1));
+  //              else if (formats[j] == "ksi2") resultfile << nan_is_0((scalesvec[normal_scale_idx_2] / normal_dev2));
+  //              else if (formats[j] == "n1angle_bs") resultfile << nan_is_0(n1angle_bs);
+  //              else if (formats[j] == "n2angle_bs") resultfile << nan_is_0(n2angle_bs);
+  //              else if (formats[j] == "diff_ci_low") resultfile << nan_is_0(ci_low);
+  //              else if (formats[j] == "diff_ci_high") resultfile << nan_is_0(ci_high);
+  //              else if (formats[j] == "diff_sig") resultfile << nan_is_0(diff_sig);
+  //              else 
+		//		{
+  //                  if (ptidx==0) cout << "Invalid result format \"" << formats[j] << "\" is ignored." << endl;
+  //              }
+  //          }        
+  //          resultfile << endl;
+  //      }
         
         if (isfinite(diff)) core_global_diff_mean += diff;
         else ++num_nan_diff;
@@ -1433,7 +1448,7 @@ bool M3C2::M3C2::compute(const Cloud & p1In, const Cloud & p1ReducedIn, const Cl
     core_global_diff_mean /= corepoints.size() - num_nan_diff;
     cout << "Global diff min / mean / max on all core points: " << core_global_diff_min << " / " << core_global_diff_mean << " / " << core_global_diff_max << endl;
 
-    for (int i=0; i<(int)resultfiles.size(); ++i) resultfiles[i]->close();
+    //for (int i=0; i<(int)resultfiles.size(); ++i) resultfiles[i]->close();
         
     return 0;
 }
