@@ -3,7 +3,7 @@
 
 namespace M3C2
 {
-	//Used to define the reconstruction options
+	//Used to define the M3C2 options
 	struct Options
 	{
 		std::vector<double> scales;
